@@ -1,2 +1,2 @@
 # tracing-testosterone
-This project visualizes the racialization of testosterone using social network analysis.
+This project uses social network analysis to visualize a citation network looking the racialization of testosterone. 
