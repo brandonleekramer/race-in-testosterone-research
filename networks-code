@@ -63,9 +63,19 @@ library('visNetwork')
 #detach("package:igraph")
 #detach("package:visNetwork")
 
-#creating nodes & edges  
-nodes <- read.csv(file.choose(),header=TRUE, as.is=TRUE) 
-edges <- read.csv(file.choose(),header=TRUE, as.is=TRUE)
+# creating nodes & edges from google sheet
+network_data <- gs_url("https://docs.google.com/spreadsheets/d/1Ofq18UN39QH-8OPxT-gzF0_J_dVrckpG0th2X5ktbIg/edit#gid=922546532")
+
+nodes <- network_data %>% 
+  gs_read(ws = "Nodelist")
+edges <- network_data %>% 
+  gs_read(ws = "Edgelist")
+
+#creating nodes & edges from local csv files (if applicable)
+#setwd("C:/Users/soren/Google Drive/Biomedical MultipliciTs/Racial Differences in T/Network")
+#setwd("C:/Users/bkram/CloudStation/Biomedical MultipliciTs/Racial Differences in T/Network")
+#nodes <- read.csv(file.choose(),header=TRUE, as.is=TRUE) 
+#edges <- read.csv(file.choose(),header=TRUE, as.is=TRUE)
 
 #remove all the self-loops (required for igraph, not visNetwork)
 edges <- edges[which(edges$loop=='0'),]
@@ -98,7 +108,7 @@ display.brewer.pal(4, "Greys")
 display.brewer.pal(11, "RdYlGn")
 
 #applying color palettes to age/gender graph 
-nodes$color = nodes$Group
+nodes$color = nodes$group
 nodes$color = gsub("AdultMale",palette1(11)[10],nodes$color) #blue 
 nodes$color = gsub("AdultFemale",palette2(11)[9],nodes$color) #green
 nodes$color = gsub("Children", palette1(11)[2],nodes$color) #red
@@ -108,25 +118,25 @@ nodes$color = gsub("NonEvidence",palette4(4)[1],nodes$color) #light grey
 #nodes based on indegree
 nodes$size <- nodes$indegree*7
 nodes$label <- nodes$id
-#nodes$label.cex <- nodes$indegree*5
 
 #graph with random seed, force atlas, no overlap 
 visNetwork(nodes, edges) %>% 
-  visOptions(selectedBy = "Group") %>%
+  visOptions(selectedBy = "group") %>%
   visLayout(randomSeed = 12345) %>% 
   visPhysics(solver = "forceAtlas2Based",
             forceAtlas2Based = list(avoidOverlap = 0.01))
 
 #output graph to html file 
 netviz1 <- visNetwork(nodes, edges) %>% 
-  visOptions(selectedBy = "Group") %>%
+  visOptions(selectedBy = "group") %>%
   visLayout(randomSeed = 12345) %>% 
   visPhysics(solver = "forceAtlas2Based",
              forceAtlas2Based = list(avoidOverlap = 0.0001))
-visSave(netviz1, file = "racialization-testosterone-groups.html")
+setwd("C:/Users/bkram/CloudStation/Biomedical MultipliciTs/Racial Differences in T/Network")
+visSave(netviz1, file = "by-groups.html")
 
 #applying color palettes to outcomes graph 
-nodes$color=nodes$Outcome
+nodes$color=nodes$outcome
 nodes$color=gsub("Mixed",palette1(11)[3],nodes$color) #orange
 nodes$color=gsub("Mixed",palette5(11)[5],nodes$color) #orange 
 nodes$color=gsub("Difference",palette2(11)[10],nodes$color) #green
@@ -136,21 +146,20 @@ nodes$color=gsub("NoComp",palette4(4)[1],nodes$color) #light grey
 #nodes based on indegree
 nodes$size <- nodes$indegree*7
 nodes$label <- nodes$id
-#nodes$label.cex <- nodes$indegree*5
 
 visNetwork(nodes, edges) %>% 
-  visOptions(selectedBy = "Outcome", nodesIdSelection = TRUE) %>%
+  visOptions(selectedBy = "outcome", nodesIdSelection = TRUE) %>%
   visLayout(randomSeed = 12345) %>% 
   visPhysics(solver = "forceAtlas2Based",
              forceAtlas2Based = list(avoidOverlap = 0.01))
 
 #output graph to html file
 netviz2 <- visNetwork(nodes, edges) %>% 
-  visOptions(selectedBy = "Outcome") %>%
+  visOptions(selectedBy = "outcome") %>%
   visLayout(randomSeed = 12345) %>% 
   visPhysics(solver = "forceAtlas2Based",
              forceAtlas2Based = list(avoidOverlap = 0.0001))
-visSave(netviz2, file = "racialization-testosterone-outcomes.html")
+visSave(netviz2, file = "by-outcomes.html")
 
 
 
