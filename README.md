@@ -1,5 +1,5 @@
 # tracing-testosterone
-This project uses social network analysis to visualize a citation network looking the racialization of testosterone. 
+This project uses social network analysis to visualize a citation network looking at how testosterone is used to racialize populations in scientific research. 
 
-Link to site: https://www.brandonleekramer.com/t-racing-testosterone
+Link to site: https://www.brandonleekramer.com/racialization-in-testosterone-research
 
