@@ -9,7 +9,7 @@ for (pkg in c("tidyverse", "igraph", "googlesheets", "networkD3",
               "ergm", "sna", "statnet", "parallel")) {library(pkg, character.only = TRUE)}
 
 # loading data 
-setwd("C:/Users/bkram/CloudStation/git/data")
+setwd("C:/Users/bkram/CloudStation/Biomedical MultipliciTs/Racial Differences in T/racialization-in-testosterone-research")
 nodelist <- read_csv("racialization-nodelist.csv")
 edgelist <- read_csv("racialization-edgelist.csv")
 
