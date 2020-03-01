@@ -4,12 +4,14 @@
 
 # loading packages 
 rm(list = ls())
-knitr::opts_knit$set(root.dir = "C:/Users/bkram/CloudStation/git/racialization-in-testosterone-research")
-for (pkg in c("tidyverse", "igraph", "googlesheets", "networkD3", 
+#knitr::opts_knit$set(root.dir = "C:/Users/bkram/CloudStation/git/racialization-in-testosterone-research")
+knitr::opts_knit$set(root.dir = "~/racialization-data")
+
+for (pkg in c("tidyverse", "igraph", "networkD3", 
               "ergm", "sna", "statnet", "parallel")) {library(pkg, character.only = TRUE)}
 
 # loading data 
-setwd("C:/Users/bkram/CloudStation/Biomedical MultipliciTs/Racial Differences in T/racialization-in-testosterone-research")
+#setwd("C:/Users/bkram/CloudStation/Biomedical MultipliciTs/Racial Differences in T/racialization-in-testosterone-research")
 nodelist <- read_csv("racialization-nodelist.csv")
 edgelist <- read_csv("racialization-edgelist.csv")
 
