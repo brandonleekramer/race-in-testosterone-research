@@ -490,7 +490,17 @@ plot(gof_t_dom_rgn_wvnw_gwe10_i12o12); gof_t_dom_rgn_wvnw_gwe10_i12o12
 anova(t_dom_drm_rgn, t_dom_rgn_wvnw_gwe20_in1wvsnw, t_dom_rgn_wvnw_gwe20_i12o14)
 #######################################################################################################
 
-
+t_dom_rgn_wvnw_gwe10_i12o12 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                      nodematch("testedmen") + nodematch("wvsnw") +
+                                      idegree(1:2) + 
+                                      odegree(1:2) +
+                                      gwesp(0.10, fixed=TRUE, cutoff=5),
+                                    control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                         parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_gwe10_i12o12)
+gof_t_dom_rgn_wvnw_gwe10_i12o12 <- btergm::gof(t_dom_rgn_wvnw_gwe10_i12o12)
+plot(gof_t_dom_rgn_wvnw_gwe10_i12o12); gof_t_dom_rgn_wvnw_gwe10_i12o12
+anova(t_dom_drm_rgn, t_dom_rgn_wvnw_gwe20_in1wvsnw, t_dom_rgn_wvnw_gwe20_i12o14)
 
 
 
