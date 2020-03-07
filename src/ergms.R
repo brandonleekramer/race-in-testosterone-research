@@ -7,7 +7,7 @@ rm(list = ls())
 #knitr::opts_knit$set(root.dir = "C:/Users/bkram/CloudStation/git/racialization-in-testosterone-research")
 setwd("~/racialization-data")
 
-for (pkg in c("tidyverse", "igraph", "networkD3", 
+for (pkg in c("tidyverse", "igraph", "networkD3", "texreg", "kableExtra",
               "ergm", "sna", "statnet", "parallel")) {library(pkg, character.only = TRUE)}
 
 # loading data 
@@ -68,6 +68,50 @@ nodelist$indegree <- degree(tnet, cmode = "indegree")
 nodelist$outdegree <- degree(tnet, cmode = "outdegree")
 tnet%v%"medscontrolled" <- nodelist$indegree
 tnet%v%"medscontrolled" <- nodelist$outdegree
+
+nodelist <- nodelist %>% 
+  mutate(article_age = 2020 - year)
+tnet%v%"article_age" <- nodelist$article_age
+
+nodelist$testedmen <- recode(nodelist$group, "AdultMale" = 1, "MaleFemaleChildren" = 1)
+nodelist$testedmen[is.na(nodelist$testedmen)] <- 0
+tnet%v%"testedmen" <- nodelist$testedmen
+
+nodelist$testedwomen <- recode(nodelist$group, "AdultFemale" = 1, "MaleFemaleChildren" = 1)
+nodelist$testedwomen[is.na(nodelist$testedwomen)] <- 0
+tnet%v%"testedwomen" <- nodelist$testedwomen
+
+nodelist$eastern <- recode(nodelist$region, `1` = 1, `2` = 0, `3` = 0, `4` = 0, `5` = 0)
+nodelist$eastern[is.na(nodelist$eastern)] <- 0
+tnet%v%"eastern" <- nodelist$eastern
+
+nodelist$southern <- recode(nodelist$region, `1` = 0, `2` = 0, `3` = 1, `4` = 0, `5` = 0)
+nodelist$southern[is.na(nodelist$southern)] <- 0
+tnet%v%"southern" <- nodelist$southern
+
+nodelist$onlydiff <- recode(nodelist$outcomecode, `0` = 0, `1` = 0, `2` = 1, `3` = 0)
+nodelist$onlydiff[is.na(nodelist$onlydiff)] <- 0
+tnet%v%"onlydiff" <- nodelist$onlydiff
+
+nodelist %>% count(onlydiff)
+
+nodelist$anydiff <- recode(nodelist$outcomecode, `0` = 0, `1` = 0, `2` = 1, `3` = 1)
+nodelist$anydiff[is.na(nodelist$anydiff)] <- 0
+tnet%v%"anydiff" <- nodelist$anydiff
+nodelist %>% count(anydiff)
+
+# setting edge attributes 
+edgelist$anyslippage <- recode(edgelist$slippage, `1` = 1, `2` = 1, `3` = 1, `4` = 1, `5` = 1)
+edgelist$anyslippage[is.na(edgelist$anyslippage)] <- 0
+edgelist %>% count(slippage)
+edgelist %>% count(anyslippage)
+el_network <- network(edgelist, directed = TRUE)
+el_network <- network(edgelist[,1:2], directed = TRUE)
+set.edge.attribute(el_network, 'weight', edgelist[,3])
+set.edge.attribute(el_network, 'valence', edgelist[,4])
+set.edge.attribute(el_network, 'anyslippage', edgelist[,8])
+set.edge.attribute(el_network, 'slippage', edgelist[,5])
+row.names(as.sociomatrix(tnet))==row.names(as.sociomatrix(el_network))
 
 ################################################### BASELINE AND STUDY-LEVEL ATTRIBUTES 
 
@@ -176,7 +220,7 @@ summary(t_dom_drm_rgn_jnl)
 ####################################################################################################################
 # domain,drd,region = best combination so far 
 t_dom_drm_rgn <- ergm(tnet ~ edges + nodefactor("domain") + nodefactor("drm") + nodematch("region"), 
-                      control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, parallel.type="PSOCK", eval.loglik = TRUE))
+                      control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, parallel.type="PSOCK"))
 summary(t_dom_drm_rgn)
 gof_dom_drm_rgn <- gof(t_dom_drm_rgn) 
 plot(gof_dom_drm_rgn); gof_dom_drm_rgn
@@ -361,6 +405,8 @@ plot(gof_dom_rgn_men_wvnw_gwe20); gof_dom_rgn_men_wvnw_gwe20
 bgof_dom_rgn_men_wvnw_gwe20 <- btergm::gof(t_dom_rgn_men_wvnw_gwe20)
 plot(bgof_dom_rgn_men_wvnw_gwe20); bgof_dom_rgn_men_wvnw_gwe20
 
+summary(tnet ~ edges + dsp(1:10))
+summary(tnet ~ edges + istar(1:10))
 summary(tnet ~ edges + idegree(1:20))
 summary(tnet ~ edges + odegree(1:20))
 
@@ -490,17 +536,327 @@ plot(gof_t_dom_rgn_wvnw_gwe10_i12o12); gof_t_dom_rgn_wvnw_gwe10_i12o12
 anova(t_dom_drm_rgn, t_dom_rgn_wvnw_gwe20_in1wvsnw, t_dom_rgn_wvnw_gwe20_i12o14)
 #######################################################################################################
 
-t_dom_rgn_wvnw_gwe10_i12o12 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
-                                      nodematch("testedmen") + nodematch("wvsnw") +
-                                      idegree(1:2) + 
-                                      odegree(1:2) +
-                                      gwesp(0.10, fixed=TRUE, cutoff=5),
-                                    control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
-                                                         parallel.type="PSOCK", seed=123))
-summary(t_dom_rgn_wvnw_gwe10_i12o12)
-gof_t_dom_rgn_wvnw_gwe10_i12o12 <- btergm::gof(t_dom_rgn_wvnw_gwe10_i12o12)
-plot(gof_t_dom_rgn_wvnw_gwe10_i12o12); gof_t_dom_rgn_wvnw_gwe10_i12o12
-anova(t_dom_drm_rgn, t_dom_rgn_wvnw_gwe20_in1wvsnw, t_dom_rgn_wvnw_gwe20_i12o14)
+t_dom_rgn_wvnw_gwe10_i12o12_dsp10 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                            nodematch("testedmen") + nodematch("wvsnw") +
+                                            idegree(1:2) + 
+                                            odegree(1:2) +
+                                            gwdsp(0.10, fixed=TRUE, cutoff=9) +
+                                            gwesp(0.10, fixed=TRUE, cutoff=5),
+                                          control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                               parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_gwe10_i12o12_dsp10)
+
+t_dom_rgn_wvnw_gwe10_i12o12_dsp0 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                            nodematch("testedmen") + nodematch("wvsnw") +
+                                            idegree(1:2) + 
+                                            odegree(1:2) +
+                                            gwdsp(0, fixed=TRUE, cutoff=9) +
+                                            gwesp(0.10, fixed=TRUE, cutoff=5),
+                                          control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                               parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_gwe10_i12o12_dsp0)
+
+t_dom_rgn_wvnw_gwe10_i12o12_dsp20 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                           nodematch("testedmen") + nodematch("wvsnw") +
+                                           idegree(1:2) + 
+                                           odegree(1:2) +
+                                           gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                           gwesp(0.10, fixed=TRUE, cutoff=5),
+                                         control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                              parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_gwe10_i12o12_dsp20)
+
+t_dom_rgn_wvnw_gwe10_i12o12_dsp30 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                            nodematch("testedmen") + nodematch("wvsnw") +
+                                            idegree(1:2) + 
+                                            odegree(1:2) +
+                                            gwdsp(0.30, fixed=TRUE, cutoff=9) +
+                                            gwesp(0.10, fixed=TRUE, cutoff=5),
+                                          control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                               parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_gwe10_i12o12_dsp30)
+
+# best version was 0.20 
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi50 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                            nodematch("testedmen") + nodematch("wvsnw") +
+                                            gwidegree(0.5,fixed=TRUE) + 
+                                            #gwodegree(decay=1,fixed=TRUE) +
+                                            gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                            gwesp(0.10, fixed=TRUE, cutoff=5),
+                                          control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                               parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi50)
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi25 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                           nodematch("testedmen") + nodematch("wvsnw") +
+                                           gwidegree(0.25,fixed=TRUE) + 
+                                           #gwodegree(decay=1,fixed=TRUE) +
+                                           gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                           gwesp(0.10, fixed=TRUE, cutoff=5),
+                                         control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                              parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi25)
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi10 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                           nodematch("testedmen") + nodematch("wvsnw") +
+                                           gwidegree(0.1,fixed=TRUE) + 
+                                           #gwodegree(decay=1,fixed=TRUE) +
+                                           gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                           gwesp(0.10, fixed=TRUE, cutoff=5),
+                                         control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                              parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi10)
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi05 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                           nodematch("testedmen") + nodematch("wvsnw") +
+                                           gwidegree(0.05,fixed=TRUE) + 
+                                           #gwodegree(decay=1,fixed=TRUE) +
+                                           gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                           gwesp(0.10, fixed=TRUE, cutoff=5),
+                                         control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                              parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi05)
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                           nodematch("testedmen") + nodematch("wvsnw") +
+                                           gwidegree(0.05,fixed=TRUE) + 
+                                           gwodegree(0.5,fixed=TRUE) +
+                                           gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                           gwesp(0.10, fixed=TRUE, cutoff=5),
+                                         control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                              parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50)
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo75 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                                 nodematch("testedmen") + nodematch("wvsnw") +
+                                                 gwidegree(0.05,fixed=TRUE) + 
+                                                 gwodegree(0.75,fixed=TRUE) +
+                                                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                 gwesp(0.10, fixed=TRUE, cutoff=5),
+                                               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                    parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo75)
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo25 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                                 nodematch("testedmen") + nodematch("wvsnw") +
+                                                 gwidegree(0.05,fixed=TRUE) + 
+                                                 gwodegree(0.25,fixed=TRUE) +
+                                                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                 gwesp(0.10, fixed=TRUE, cutoff=5),
+                                               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                    parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo25)
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo10 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                                 nodematch("testedmen") + nodematch("wvsnw") +
+                                                 gwidegree(0.05,fixed=TRUE) + 
+                                                 gwodegree(0.1,fixed=TRUE) +
+                                                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                 gwesp(0.10, fixed=TRUE, cutoff=5),
+                                               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                    parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo10)
+
+# this one won ############################################################################################ ROC = 0.71
+t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                                 nodematch("testedmen") + nodematch("wvsnw") +
+                                                 gwidegree(0.05,fixed=TRUE) + 
+                                                 gwodegree(0.5,fixed=TRUE) +
+                                                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                 gwesp(0.10, fixed=TRUE, cutoff=5),
+                                               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                    parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50)
+gof_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50 <- btergm::gof(t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50)
+plot(gof_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50); gof_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50
+anova(t_dom_rgn_wvnw_gwe10_i12o12, t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50)
+#######################################################################################################################
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi05_in1_gwo50 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                                 nodematch("testedmen") + nodematch("wvsnw") +
+                                                 gwidegree(0.05,fixed=TRUE) + idegree(1) +
+                                                 gwodegree(0.5,fixed=TRUE) +
+                                                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                 gwesp(0.10, fixed=TRUE, cutoff=5),
+                                               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                    parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi05_in1_gwo50)
+
+
+t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50 <- ergm(tnet ~ edges + nodefactor("domain") + nodematch("region") + 
+                                                 nodematch("testedmen") + nodematch("wvsnw") +
+                                                 gwidegree(0.05,fixed=TRUE) + 
+                                                 gwodegree(0.5,fixed=TRUE) +
+                                                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                 gwesp(0.10, fixed=TRUE, cutoff=5),
+                                               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                    parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_wvnw_esp10_dsp20_gwi05_gwo50)
+
+t_dom_rgn_mnw_wvnw_esp10_dsp20_gwi05_gwo50 <- ergm(tnet ~ edges + 
+                                                 nodefactor("domain") + nodematch("region") + 
+                                                 nodematch("testedmen") + nodematch("testedwomen") +
+                                                 nodematch("wvsnw") +
+                                                 gwidegree(0.05,fixed=TRUE) + 
+                                                 gwodegree(0.5,fixed=TRUE) +
+                                                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                 gwesp(0.10, fixed=TRUE, cutoff=5),
+                                               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                    parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_mnw_wvnw_esp10_dsp20_gwi05_gwo50)
+
+# added in men & women (after recoding menwomenchildren var)
+t_dom_rgn_mnw_wvnw_esp10_dsp20_gwi05_gwo50 <- ergm(tnet ~ edges + 
+                                                     nodefactor("domain") + nodematch("region") + 
+                                                     nodematch("testedmen") + nodematch("testedwomen") +
+                                                     nodematch("wvsnw") +
+                                                     gwidegree(0.05,fixed=TRUE) + 
+                                                     gwodegree(0.5,fixed=TRUE) +
+                                                     gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                     gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                   control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                        parallel.type="PSOCK", seed=123))
+summary(t_dom_rgn_mnw_wvnw_esp10_dsp20_gwi05_gwo50)
+
+nodelist %>% count(region) # 1 = eastern, 3 = southern 
+nodelist %>% count(eastern)
+nodelist %>% count(southern)
+
+t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50 <- ergm(tnet ~ edges + 
+                                                     nodefactor("domain") + nodematch("southern") +
+                                                     nodematch("testedmen") + nodematch("testedwomen") +
+                                                     nodematch("wvsnw") + 
+                                                     gwidegree(0.05,fixed=TRUE) + 
+                                                     gwodegree(0.5,fixed=TRUE) +
+                                                     gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                     gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                   control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                        parallel.type="PSOCK", seed=123))
+summary(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50)
+
+###############################################################################################################
+t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50 <- ergm(tnet ~ edges + 
+                                                     nodefactor("domain") + nodematch("southern") +
+                                                     nodematch("testedmen") + nodematch("testedwomen") +
+                                                     nodematch("wvsnw") + 
+                                                     gwidegree(0.05,fixed=TRUE) + 
+                                                     gwodegree(0.5,fixed=TRUE) +
+                                                     gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                     gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                   control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                        parallel.type="PSOCK", seed=123))
+summary(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50)
+gof_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50 <- btergm::gof(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50)
+plot(gof_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50); gof_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50         # ROC = 0.723 
+###############################################################################################################
+
+t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_odiff <- ergm(tnet ~ edges + 
+                                                     nodefactor("domain") + nodematch("southern") +
+                                                     nodematch("testedmen") + nodematch("testedwomen") +
+                                                     nodematch("wvsnw") + nodematch("onlydiff") +
+                                                     gwidegree(0.05,fixed=TRUE) + 
+                                                     gwodegree(0.5,fixed=TRUE) +
+                                                     gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                     gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                   control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                        parallel.type="PSOCK", seed=123))
+summary(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_odiff)
+
+t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_anydiff <- ergm(tnet ~ edges + 
+                                                           nodefactor("domain") + nodematch("southern") +
+                                                           nodematch("testedmen") + nodematch("testedwomen") +
+                                                           nodematch("wvsnw") + nodematch("anydiff") +
+                                                           gwidegree(0.05,fixed=TRUE) + 
+                                                           gwodegree(0.5,fixed=TRUE) +
+                                                           gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                           gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                         control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                              parallel.type="PSOCK", seed=123))
+summary(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_anydiff)
+
+t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_anydiff <- ergm(tnet ~ edges + 
+                                                             nodefactor("domain") + nodematch("southern") +
+                                                             nodematch("testedmen") + nodematch("testedwomen") +
+                                                             nodematch("wvsnw") + nodematch("anydiff") +
+                                                             gwidegree(0.05,fixed=TRUE) + 
+                                                             gwodegree(0.5,fixed=TRUE) +
+                                                             gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                             gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                           control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                                parallel.type="PSOCK", seed=123))
+summary(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_anydiff)
+
+t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_jrnl <- ergm(tnet ~ edges + 
+                                                             nodefactor("domain") + nodematch("southern") +
+                                                             nodematch("testedmen") + nodefactor("journal") +
+                                                             nodematch("wvsnw") + nodematch("anydiff") +
+                                                             gwidegree(0.05,fixed=TRUE) + 
+                                                             gwodegree(0.5,fixed=TRUE) +
+                                                             gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                             gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                           control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                                parallel.type="PSOCK", seed=123))
+summary(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_jrnl)
+
+
+# next step is to test edgecov for citation slippage and/or valence - 3/3/20 
+# bring up An and Yang article or Varela: 
+# https://static1.squarespace.com/static/55d9f3fbe4b001723c108c17/t/5aec7ec9352f5368682dcab7/1525448395763/Varela+et+al+2018+-+Preventive+Medicine.pdf
+
+
+t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_anyslpg <- ergm(tnet ~ edges + nodefactor("domain") + 
+                                                          nodematch("southern") + nodematch("wvsnw") +
+                                                          nodematch("testedmen") + nodematch("testedwomen") +
+                                                          gwidegree(0.05,fixed=TRUE) + 
+                                                          gwodegree(0.5,fixed=TRUE) +
+                                                          gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                          gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                        control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                             parallel.type="PSOCK", seed=123))
+summary(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_anyslpg)
+
+
+t_dom_NONImnw_NONIwvnw_sth_esp10_dsp20_gwi05_gwo50 <- ergm(tnet ~ edges + 
+                                                     nodefactor("domain") + nodematch("southern") +
+                                                     nodeocov("testedmen") + nodeocov("wvsnw") + 
+                                                     nodeicov("testedmen") + nodeicov("testedwomen") + nodeicov("wvsnw") + 
+                                                     gwidegree(0.05,fixed=TRUE) + 
+                                                     gwodegree(0.5,fixed=TRUE) +
+                                                     gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                     gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                   control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                        parallel.type="PSOCK", seed=123))
+summary(t_dom_NONImnw_NONIwvnw_sth_esp10_dsp20_gwi05_gwo50)
+
+t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_vlnc <- ergm(tnet ~ edges + nodefactor("domain") + 
+                                                             nodematch("southern") + nodematch("wvsnw") +
+                                                             nodematch("testedmen") + nodematch("testedwomen") +
+                                                             edgecov(el_network, "valence") + 
+                                                             gwidegree(0.05,fixed=TRUE) + 
+                                                             gwodegree(0.5,fixed=TRUE) +
+                                                             gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                             gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                           control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                                parallel.type="PSOCK", seed=123))
+summary(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_vlnc)
+# highly correlated model terms 
+
+#####
+t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_age <- ergm(tnet ~ edges + 
+                                                     nodefactor("domain") + absdiff("article_age") +
+                                                     nodematch("testedmen") + nodematch("testedwomen") +
+                                                     nodematch("wvsnw") + nodematch("southern") +
+                                                     gwidegree(0.05,fixed=TRUE) + 
+                                                     gwodegree(0.5,fixed=TRUE) +
+                                                     gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                                                     gwesp(0.10, fixed=TRUE, cutoff=5),
+                                                   control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                                                        parallel.type="PSOCK", seed=123))
+summary(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_age)
+gof_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_age <- btergm::gof(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_age)
+plot(gof_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_age); gof_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_age         
+######
 
 
 
@@ -509,22 +865,59 @@ anova(t_dom_drm_rgn, t_dom_rgn_wvnw_gwe20_in1wvsnw, t_dom_rgn_wvnw_gwe20_i12o14)
 
 
 
-summary(tnet ~ edges + ostar(1:10))
-summary(tnet ~ edges + istar(1:10))
-summary(tnet ~ edges + idegree(1:20))
-summary(tnet ~ edges + odegree(1:20))
 
 
 
 
-# must finish coding slippage variable ######################
+
+screenreg(list(t_dom_drm_rgn, 
+             t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50, 
+             t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_age), 
+        custom.model.names = c('endogenous', 'covariates', 'combo'),
+        single.row = TRUE, # adds SE on the same line as coefficients
+        caption = 'Comparison of ERG models', 
+        fontsize = 'footnotesize')
 
 
-references 
 
-#https://statnet.org/trac/raw-attachment/wiki/Sunbelt2016/ergm_tutorial.html
 
-#http://statnet.csde.washington.edu/workshops/EUSN/current/ergm/ergm_tutorial.html
+
+
+
+
+alldyads <- btergm::edgeprob(t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_age)
+allnames <- matrix(data = names(alldyads), ncol = 1)
+colnames(allnames) <- "Variable name"
+kable_styling(kable(allnames), bootstrap_options = c( "condense"), full_width = FALSE)
+head(alldyads[, c("tie", "i.name", "j.name", "probability")])
+
+ggplot(alldyads, 
+       aes(x = absdiff.how_old, 
+           y = probability))+
+  geom_point() +
+  geom_smooth(method = 'lm')
+
+
+
+
+
+
+screenreg(list(t_dom_drm_rgn, 
+               t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50, 
+               t_dom_mnw_wvnw_sth_esp10_dsp20_gwi05_gwo50_age))
+ 
+
+data(florentine)
+
+
+plot(el_network, edge.col = get.edge.value(el_network, "slippage"))
+
+
+# references 
+
+# https://statnet.org/trac/raw-attachment/wiki/Sunbelt2016/ergm_tutorial.html
+
+# http://statnet.csde.washington.edu/workshops/EUSN/current/ergm/ergm_tutorial.html
 
 
 
