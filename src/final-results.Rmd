@@ -1,0 +1,314 @@
+---
+title: "ERGM Results"
+output: html_document
+---
+
+```{r setup, echo=FALSE, include=FALSE}
+#rm(list = ls())
+knitr::opts_chunk$set(root.dir = "~/racialization-data")
+for (pkg in c("tidyverse", "igraph", "networkD3", "texreg", "kableExtra", "psych",
+              "ergm", "sna", "statnet", "parallel")) {library(pkg, character.only = TRUE)}
+
+# loading data 
+setwd("~/racialization-data")
+nodelist <- read_csv("racialization-nodelist.csv")
+edgelist <- read_csv("racialization-edgelist.csv") 
+edgelist <- edgelist %>% select(-WorkSpace)
+
+# converting to network 
+el=as.matrix(edgelist)            
+el[,1]=as.character(el[,1])  
+el[,2]=as.character(el[,2])
+tnet=network(edgelist,matrix.type="edgelist",directed=TRUE); rm(el) 
+plot(tnet)
+
+# setting the number of cores for parallelizing 
+#(num_cores <- detectCores() - 1) 
+num_cores <- 9
+
+# network descriptives 
+network.size(tnet) # 309
+network.edgecount(tnet) #595
+network.dyadcount(tnet) #95172
+
+# applying nodal attributes to the network 
+
+# article attributes 
+tnet%v%"year" <- nodelist$year
+tnet%v%"evidence" <- nodelist$evidence 
+tnet%v%"outcome" <- nodelist$outcomecode
+tnet%v%"domain" <- nodelist$domaincode
+tnet%v%"journal" <- nodelist$journalcode
+tnet%v%"gstimescited" <- nodelist$gstimescited
+tnet%v%"region" <- nodelist$region
+tnet%v%"drd" <- nodelist$datarecyclingbinary
+tnet%v%"drm" <- nodelist$datarecyclingmulti
+# population difference tests 
+tnet%v%"group" <- nodelist$groupcode 
+tnet%v%"testedmen" <- nodelist$testedmen 
+tnet%v%"rttcode" <- nodelist$rttcode
+tnet%v%"wbcomp" <- nodelist$wbcompcode
+tnet%v%"bacomp" <- nodelist$bacompcode
+tnet%v%"wacomp" <- nodelist$wacompcode
+tnet%v%"hisp" <- nodelist$hisp
+tnet%v%"wvsnw" <- nodelist$wvsnw
+# control tests 
+tnet%v%"timediff" <- nodelist$timediff
+tnet%v%"agemeasured" <- nodelist$agemeasured	
+tnet%v%"agecontrolled" <- nodelist$agecontrol	
+tnet%v%"agediff" <- nodelist$agediff	
+tnet%v%"bmimeasured" <- nodelist$bmimeasured	
+tnet%v%"bmicontrolled" <- nodelist$bmicontrolled	
+tnet%v%"bmidiff" <- nodelist$bmidiff	
+tnet%v%"illnesscontrolled" <- nodelist$illnesscontrolled	
+tnet%v%"sescontrolled" <- nodelist$sescontrolled	
+tnet%v%"medscontrolled" <- nodelist$medscontrolled
+nodelist$indegree <- degree(tnet, cmode = "indegree")
+nodelist$outdegree <- degree(tnet, cmode = "outdegree")
+tnet%v%"indegree" <- nodelist$indegree
+tnet%v%"outdegree" <- nodelist$outdegree
+
+# recoding year to age 
+nodelist <- nodelist %>% 
+  mutate(article_age = 2020 - year)
+tnet%v%"article_age" <- nodelist$article_age
+
+# breaking apart gender effects 
+nodelist$testedmen <- recode(nodelist$group, "AdultMale" = 1, "MaleFemaleChildren" = 1)
+nodelist$testedmen[is.na(nodelist$testedmen)] <- 0
+tnet%v%"testedmen" <- nodelist$testedmen
+
+nodelist$testedwomen <- recode(nodelist$group, "AdultFemale" = 1, "MaleFemaleChildren" = 1)
+nodelist$testedwomen[is.na(nodelist$testedwomen)] <- 0
+tnet%v%"testedwomen" <- nodelist$testedwomen
+
+# most geographical areas did not matter so this is a dummy for southern us
+nodelist$southern <- recode(nodelist$region, `1` = 0, `2` = 0, `3` = 1, `4` = 0, `5` = 0)
+nodelist$southern[is.na(nodelist$southern)] <- 0
+tnet%v%"southern" <- nodelist$southern
+
+# setting edge attributes for visualizations 
+edgelist$anyslippage <- recode(edgelist$slippage, `1` = 1, `2` = 1, `3` = 1, `4` = 1, `5` = 1)
+edgelist$anyslippage[is.na(edgelist$anyslippage)] <- 0
+edgelist %>% count(slippage)
+edgelist %>% count(anyslippage)
+el_network <- network(edgelist, directed = TRUE)
+el_network <- network(edgelist[,1:2], directed = TRUE)
+set.edge.attribute(el_network, 'weight', edgelist[,3])
+set.edge.attribute(el_network, 'valence', edgelist[,4])
+set.edge.attribute(el_network, 'anyslippage', edgelist[,8])
+set.edge.attribute(el_network, 'slippage', edgelist[,5])
+row.names(as.sociomatrix(tnet))==row.names(as.sociomatrix(el_network))
+```
+
+# Descriptive Results 
+
+```{r}
+
+nodelist$evi_dence <- recode(nodelist$evidence, `0` = "Non-Evidence", `1` = "Evidence")
+
+articles_by_year <- nodelist %>% 
+  group_by(evi_dence, year) %>% 
+  count() 
+
+ggplot(data=articles_by_year, aes(x=year, y=n, fill=evi_dence)) +
+    geom_bar(stat="identity") + 
+  scale_fill_manual(values = c("darkgrey", "black")) +
+  theme_minimal() + 
+  theme(plot.title = element_text(hjust = 0.5, vjust=-2),
+        legend.position = c(0.15, 0.85),
+        axis.title.x = element_blank(),
+        legend.title = element_blank(),
+        axis.text.y = element_text(margin = margin(r = -15)),
+        axis.text.x = element_text(margin = margin(t = -10))) +
+  labs(y = "Publications (Per Year)") +
+  scale_x_continuous(breaks = c(1960, 1965, 1970, 1975, 1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015), 
+                   labels = c(1960, 1965, 1970, 1975, 1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015)) +
+  ggtitle("Publications on Racial Differences in Testosterone Per Year")
+
+```
+
+# Basic Network Statitistics 
+
+```{r table1}
+# Table 1 
+Density <- round(gden(tnet, mode = "digraph"), 2)
+Centralization <- round(centralization(tnet, degree, mode = "digraph"), 2)
+Reciprocity <- round(grecip(tnet, measure = "dyadic"), 2)
+Transitivity <- round(gtrans(tnet, mode = "digraph"), 2)
+Isolates <- round(length(isolates(tnet)), 2)
+Measure <- c("Density", "Centralization", "Reciprocity", "Transitivity", "Isolates")
+table1 <- rbind(Density, Centralization, Reciprocity, Transitivity, Isolates)
+colnames(table1) <- c("Value")
+table1 <- as.tibble(cbind(Measure, table1))
+table1
+```
+
+# Summary Information for Centrality Measures
+
+```{r table2}
+#Table 2 
+nodelist$indegree <- degree(tnet, cmode = "indegree")
+nodelist$outdegree <- degree(tnet, cmode = "outdegree")
+nodelist$betweenness <- betweenness(tnet, cmode = "directed", gmode = "digraph")
+nodelist$evcent <- evcent(tnet, gmode = "digraph")
+
+InDegree <- round(c(describe(nodelist$indegree)$min,
+                    describe(nodelist$indegree)$mean,
+                    describe(nodelist$indegree)$max,
+                    describe(nodelist$indegree)$sd, 
+                    describe(nodelist$indegree)$skew), 2)
+
+OutDegree <- round(c(describe(nodelist$outdegree)$min, 
+                     describe(nodelist$outdegree)$mean,
+                     describe(nodelist$outdegree)$max, 
+                     describe(nodelist$outdegree)$sd,
+                     describe(nodelist$outdegree)$skew), 2)
+
+Betweenness <- round(c(describe(nodelist$betweenness)$min, 
+                     describe(nodelist$betweenness)$mean,
+                     describe(nodelist$betweenness)$max, 
+                     describe(nodelist$betweenness)$sd,
+                     describe(nodelist$betweenness)$skew), 2)
+
+Eigenvector <- round(c(describe(nodelist$evcent)$min, 
+                     describe(nodelist$evcent)$mean,
+                     describe(nodelist$evcent)$max, 
+                     describe(nodelist$evcent)$sd,
+                     describe(nodelist$evcent)$skew), 2)
+
+Measure <- c("Min", "Mean", "Max", "SD", "Skewness")
+table2 <- as.tibble(cbind(Measure, InDegree, OutDegree, Betweenness, Eigenvector))
+table2
+```
+
+# Correlation Matrices for Centrality Measures 
+
+```{r cent_score_correlation_matrix, warning=FALSE}
+nodelist$indegree <- degree(tnet, cmode = "indegree")
+nodelist$outdegree <- degree(tnet, cmode = "outdegree")
+nodelist$betweenness <- betweenness(tnet, cmode = "directed", gmode = "digraph")
+nodelist$evcent <- evcent(tnet, gmode = "digraph")
+
+InDegree <- round(c(cor(nodelist$indegree, nodelist$indegree), 
+  cor(nodelist$indegree, nodelist$outdegree), 
+  cor(nodelist$indegree, nodelist$betweenness), 
+  cor(nodelist$indegree, nodelist$evcent)), 2)
+
+OutDegree <- round(c(cor(nodelist$outdegree, nodelist$indegree), 
+  cor(nodelist$outdegree, nodelist$outdegree), 
+  cor(nodelist$outdegree, nodelist$betweenness), 
+  cor(nodelist$outdegree, nodelist$evcent)), 2)
+  
+Betweenness <- round(c(cor(nodelist$betweenness, nodelist$indegree), 
+  cor(nodelist$betweenness, nodelist$outdegree), 
+  cor(nodelist$betweenness, nodelist$betweenness), 
+  cor(nodelist$betweenness, nodelist$evcent)), 2)
+
+Eigenvector <- round(c(cor(nodelist$evcent, nodelist$indegree), 
+  cor(nodelist$evcent, nodelist$outdegree), 
+  cor(nodelist$evcent, nodelist$betweenness), 
+  cor(nodelist$evcent, nodelist$evcent)), 2)
+
+table3 <- rbind(InDegree, OutDegree, Betweenness, Eigenvector)
+colnames(table3) <- c("InDegree", "OutDegree", "Betweenness", "Eigenvector")
+Measure <- c("InDegree", "OutDegree", "Betweenness", "Eigenvector")
+table3 <- as.tibble(cbind(Measure, table3))
+table3
+```
+
+# ERGM Results 
+
+```{r ergm model1}
+# Endogenous/Structure Model 
+model1 <- ergm(tnet ~ edges + 
+                 gwesp(0.10, fixed=TRUE, cutoff=5) +
+                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                 gwidegree(0.01,fixed=TRUE) + 
+                 gwodegree(0.50,fixed=TRUE),
+               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                    parallel.type="PSOCK", seed = 123))
+summary(model1)
+```
+
+```{r ergm model2}
+# Covariates Model 
+model2 <- ergm(tnet ~ edges + 
+                 nodefactor("domain") + absdiff("article_age") +
+                 nodematch("testedmen") + nodematch("testedwomen") +
+                 nodematch("wvsnw") + nodematch("southern"),
+               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25,
+                                    parallel.type="PSOCK", seed = 123))
+summary(model2)
+```
+
+```{r ergm model3}
+# Combination Model 
+model3 <- ergm(tnet ~ edges + 
+                 nodefactor("domain") + absdiff("article_age") +
+                 nodematch("testedmen") + nodematch("testedwomen") +
+                 nodematch("wvsnw") + nodematch("southern") +
+                 gwesp(0.10, fixed=TRUE, cutoff=5) +
+                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                 gwidegree(0.01,fixed=TRUE) + 
+                 gwodegree(0.50,fixed=TRUE),
+               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                    parallel.type="PSOCK", seed = 123))
+summary(model3)
+```
+
+```{r final_ergm_tables}
+# Final Table 
+screenreg(list(model1, model2, model3), 
+        custom.model.names = c('Covariates', 'Endogenous', 'Combination'),
+        single.row = TRUE, # adds SE on the same line as coefficients
+        caption = 'Comparison of ERG models', 
+        fontsize = 'footnotesize')
+```
+
+```{r ergm_coeffecients}
+# For interpreting coeffecients 
+plogis(coef(model3))
+```
+
+```{r diagnostics for ergms, fig.height=9.5, fig.width=11.5}
+mcmc.diagnostics(model3) 
+```
+
+```{r gof_for_ergms, fig.width=11.5, fig.height=9.5, warning=FALSE}
+gof_model3 <- btergm::gof(model3, nsim = 25, statistics = c())
+plot(gof_model3)
+```
+```{r gof_for_ergms_details}
+gof_model3
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
