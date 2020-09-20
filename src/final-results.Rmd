@@ -10,7 +10,8 @@ for (pkg in c("tidyverse", "igraph", "networkD3", "texreg", "kableExtra", "psych
               "ergm", "sna", "statnet", "parallel")) {library(pkg, character.only = TRUE)}
 
 # loading data 
-setwd("~/racialization-data")
+#setwd("~/racialization-data")
+setwd("/sfs/qumulo/qhome/kb7hp/git/racialization-in-testosterone-research/data")
 nodelist <- read_csv("racialization-nodelist.csv")
 edgelist <- read_csv("racialization-edgelist.csv") 
 edgelist <- edgelist %>% select(-WorkSpace)
@@ -24,12 +25,13 @@ plot(tnet)
 
 # setting the number of cores for parallelizing 
 #(num_cores <- detectCores() - 1) 
-num_cores <- 9
+num_cores <- 1
 
 # network descriptives 
 network.size(tnet) # 309
-network.edgecount(tnet) #595
-network.dyadcount(tnet) #95172
+network.edgecount(tnet) #
+dyad.census(tnet) #95172
+triad.census(tnet)
 
 # applying nodal attributes to the network 
 
@@ -134,7 +136,7 @@ ggplot(data=articles_by_year, aes(x=year, y=n, fill=evi_dence)) +
 # Table 1 
 Density <- round(gden(tnet, mode = "digraph"), 2)
 Centralization <- round(centralization(tnet, degree, mode = "digraph"), 2)
-Reciprocity <- round(grecip(tnet, measure = "dyadic"), 2)
+Reciprocity <- round(grecip(tnet, measure = "edgewise"), 2)
 Transitivity <- round(gtrans(tnet, mode = "digraph"), 2)
 Isolates <- round(length(isolates(tnet)), 2)
 Measure <- c("Density", "Centralization", "Reciprocity", "Transitivity", "Isolates")
@@ -268,8 +270,65 @@ screenreg(list(model1, model2, model3),
 
 ```{r ergm_coeffecients}
 # For interpreting coeffecients 
-plogis(coef(model3))
+coef(model3)
+
+plogis(sum(coef(model3)[c(2, 9)])) # testing men in biosocial, men
+plogis(sum(coef(model3)[c(2, 3, 4, 9)])) # testing men in biosocial, men
+plogis(sum(coef(model3)[c(2, 3, 4, 9, 13:16)])) # testing men in biosocial, difference, PCA
+plogis(sum(coef(model3)[c(5, 10, 13:16)])) # testing women in PCOS, cord or menopause 
+plogis(sum(coef(model3)[c(6, 10, 13:16)]))
+plogis(sum(coef(model3)[c(4, 9, 12)]))
+plogis(sum(coef(model3)[c(6, 10, 12)]))
 ```
+```{r}
+plogis(coef(model3))
+model3
+# 1 = edges, 
+# 2 = Biosocial, 3 = Diff, 4 = PCA, 5 = PCOS, 6 = Cord/Menopause, 7 = Other
+# 8 = Age, 9 = Men, 10 = Women, 11 = Western pops, 12 = Souther author, 13-16 structural factors 
+nodelist %>% 
+  group_by(domain) %>% 
+  count()
+```
+```{r}
+nodelist %>% filter(domain == "PCOS") %>% select(id, domain, outcome)
+pcos_studies <- nodelist %>% filter(domain == "PCOS") %>% select(id)
+pcos_studies <- paste(c("\\b(?i)(zq3", na.omit(pcos_studies$id), "zq3)\\b"), collapse = "|")
+edgelist %>% 
+  filter(grepl(pcos_studies, edgelist$source) | grepl(pcos_studies, edgelist$target)) %>% 
+  count(valence)
+
+menocord_studies <- nodelist %>% filter(domain == "Menopause" | domain == "Cord") %>% select(id)
+menocord_studies <- paste(c("\\b(?i)(zq3", na.omit(menocord_studies$id), "zq3)\\b"), collapse = "|")
+edgelist %>% 
+  filter(grepl(menocord_studies, edgelist$source) | grepl(menocord_studies, edgelist$target)) %>% 
+  count(valence)
+
+nodelist %>% filter(domain == "Biosocial") %>% select(id, domain, outcome)
+biosocial_studies <- nodelist %>% filter(domain == "Biosocial") %>% select(id)
+biosocial_studies <- paste(c("\\b(?i)(zq3", na.omit(biosocial_studies$id), "zq3)\\b"), collapse = "|")
+edgelist %>% 
+  filter(grepl(biosocial_studies, edgelist$source) | grepl(biosocial_studies, edgelist$target)) %>% 
+  count(valence)
+
+nodelist %>% filter(domain == "Prostate Cancer") %>% select(id, domain, outcome)
+pca_studies <- nodelist %>% filter(domain == "Prostate Cancer") %>% select(id)
+pca_studies <- paste(c("\\b(?i)(zq3", na.omit(pca_studies$id), "zq3)\\b"), collapse = "|")
+edgelist %>% 
+  filter(grepl(pca_studies, edgelist$source) | grepl(pca_studies, edgelist$target)) %>% 
+  count(valence)
+
+# 1 = claiming racial difference, 2 = claiming no racial difference, 3 = other kind of claim 
+```
+
+
+```{r}
+nodelist %>% 
+  select(domain, domaincode) %>% 
+  distinct(domain, domaincode) %>% 
+  arrange(domaincode)
+```
+
 
 ```{r diagnostics for ergms, fig.height=9.5, fig.width=11.5}
 mcmc.diagnostics(model3) 
@@ -284,7 +343,21 @@ gof_model3
 ```
 
 
-
+```{r ergm model4}
+# Combination Model 
+model_new <- ergm(tnet ~ edges + 
+                 nodefactor("domain") + absdiff("article_age") +
+                 nodematch("testedmen") + nodematch("testedwomen") +
+                 nodematch("wvsnw") + nodematch("southern") +
+                 gwesp(0.10, fixed=TRUE, cutoff=5) +
+                 gwdsp(0.20, fixed=TRUE, cutoff=9) +
+                 gwidegree(0.01,fixed=TRUE) + 
+                 gwodegree(0.50,fixed=TRUE) +
+                 edgecov(el_network, "valence"),
+               control=control.ergm(parallel=num_cores, MCMLE.maxit = 25, 
+                                    parallel.type="PSOCK", seed = 123))
+summary(model_new)
+```
 
 
 

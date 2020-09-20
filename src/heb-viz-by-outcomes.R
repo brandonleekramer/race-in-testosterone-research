@@ -1,8 +1,8 @@
 rm(list = ls())
 
 # Libraries
-detach("package:statnet", unload=TRUE)
-detach("package:sna", unload=TRUE)
+#detach("package:statnet", unload=TRUE)
+#detach("package:sna", unload=TRUE)
 library(ggraph)
 library(igraph)
 library(tidyverse)
@@ -13,6 +13,8 @@ nodelist <- read_csv("racialization-nodelist.csv")
 edgelist <- read_csv("racialization-edgelist.csv")
 # Create a graph object with the igraph library
 mygraph <- graph_from_data_frame( edgelist, vertices=nodelist )
+
+mean_distance(mygraph, directed = TRUE)
 
 # now, we need to construct a nodelist 
 for_cents <- data.frame(id = c(1:(igraph::vcount(mygraph))), label = igraph::V(mygraph)$name)
@@ -36,23 +38,25 @@ nodelist <- nodelist %>%
 
 rm(mygraph)
 
+test <- nodelist %>% filter(evidence != 0)
+cor(test$indeg_cent, test$outdeg_cent)
+cor(test$btw_cent, test$eigen_cent)
+
 # create a correlation table of select centrality measures 
 cor_table <- for_cents %>% select(indeg_cent, outdeg_cent, btw_cent, eigen_cent, auth_score, hub_score)
 cor(cor_table)
 
 # creating first level of hierarchy
-unique(nodelist$domaincode)
+unique(nodelist$outcome)
 
-first_level <- data.frame(from="Origin",
-                          to=c("NonEvidence", "Biosocial", "Difference",
-                               "Prostate Cancer", "PCOS", "Menopause",  "Other"))
+first_level <- data.frame(from="Origin", to=c("Null", "Mixed", "NoComp", "Difference"))
 
 # creating second level of hierarchy
 second_level <- nodelist
 second_level <- second_level %>%
-  mutate(domain_viz = recode(domaincode, `0` = "NonEvidence", `1` = "Biosocial", `2` = "Difference", 
-                    `3` = "Prostate Cancer", `4` = "PCOS", `5` = "Menopause", `6` = "Other")) %>%
-  rename(from = domain_viz, to = name) %>%
+  #mutate(domain_viz = recode(outcome, `0` = "NonEvidence", `1` = "Biosocial", `2` = "Difference", 
+  #                  `3` = "Prostate Cancer", `4` = "PCOS", `5` = "Menopause", `6` = "Other")) %>%
+  rename(from = outcome, to = name) %>%
   arrange(from, -deg_cent) %>%
   select(from, to)
 
@@ -95,8 +99,8 @@ connect <- connect %>%
 
 #set degree
 deg <- 360/length(unique(nodelist$name))
-#first_level (origin, 7 domains)
-first_level <- c(0,0,0,0,0,0,0,0)
+#first_level (origin, 4 outcomes)
+first_level <- c(0,0,0,0,0)
 #find 90 on the right side 
 # that was Kim2013B in the 64th row (56th row after removing top 8 randoms)
 subset1 = c(1:56)
@@ -127,7 +131,7 @@ vertices$hjust <- c(first_level,hjust1,89,hjust2,hjust3)
 
 # customize label information 
 vertices <- vertices %>%
-  mutate(heb_label = ifelse(test = str_detect(string = group, pattern = "NonEvidence"), yes = NA, no = label)) 
+  mutate(heb_label = ifelse(test = str_detect(string = group, pattern = "NoComp"), yes = NA, no = label)) 
 
 heb_labels <- vertices %>%
   # indeg
@@ -148,33 +152,44 @@ heb_labels <- vertices %>%
   #auth 
   mutate(auth_colors = ifelse(vertices$auth_score > mean(na.omit(vertices$auth_score)), "black", "#A9A9A9")) %>%
   mutate(auth_sizes = ifelse(vertices$auth_score > mean(na.omit(vertices$auth_score)), 3, 2)) %>%
+  #times cited
+  mutate(cited_colors = ifelse(vertices$gstimescited > mean(na.omit(vertices$gstimescited)), "black", "#A9A9A9")) %>%
+  mutate(cited_sizes = ifelse(vertices$gstimescited > mean(na.omit(vertices$gstimescited)), 3, 2)) %>%
   drop_na(indeg_colors, indeg_sizes) %>% 
   select(indeg_colors, indeg_sizes, outdeg_colors, outdeg_sizes, btw_colors, btw_sizes, 
-         eigen_colors, eigen_sizes, hub_colors, hub_sizes, auth_colors, auth_sizes)
+         eigen_colors, eigen_sizes, hub_colors, hub_sizes, auth_colors, auth_sizes, cited_colors, cited_sizes)
 
 # connect the datasets
 from <- match( connect$from, vertices$name)
 to <- match( connect$to, vertices$name)
 
+connect$test <- recode(connect$valence, `0` = "blue", `1` = "red", `2` = "orange", `3` = "green")
+
 # domain graphs ###############
+edgelist %>% 
+  filter(source != target) %>% 
+  count()
+
+259/544
 
 # indegree 
 ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
   geom_conn_bundle(data = get_con(from = from, to = to), 
                    tension = 0.6, aes(colour=..index..), show.legend = FALSE) +
   scale_edge_colour_gradient(low = "#000000" , high = "#D3D3D3") +
+  #scale_edge_linetype_manual(values = connect$test, guide = FALSE) +
+  #scale_edge_colour_identity() +
   geom_node_text(aes(x = x*1.1, y=y*1.1, filter = leaf, label=vertices$heb_label, 
                      hjust=vertices$hjust, angle = vertices$new_angle), 
                  size=heb_labels$indeg_sizes, alpha=1, colour=heb_labels$indeg_colors) +
   theme_void() +
-  theme(legend.position=c(0.115,0.235), legend.title=element_blank(), 
+  theme(legend.position=c(0.115,0.185), legend.title=element_blank(), 
         legend.text = element_text(size = 9), plot.margin=unit(c(0,0,0,0),"cm")) +
   guides(size = FALSE, alpha = FALSE, color = guide_legend(override.aes = list(size=4))) +
   expand_limits(x = c(-1.3, 1.3), y = c(-1.3, 1.3)) + 
   geom_node_point(aes(filter = leaf, x = x*1.05, y=y*1.05, colour=group, alpha = 0.8, size=vertices$indeg_cent)) + 
   scale_size_continuous( range = c(3,10) ) +
-  scale_colour_manual(values= c(palette(11)[9], "#FFDB58", palette(11)[3], "#D3D3D3",     
-                                palette(11)[1], palette(11)[11],palette(11)[10]))
+  scale_colour_manual(values= c(  palette(11)[10], "#FFDB58","#D3D3D3", palette(11)[2]))
 
 # outdegree 
 ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
@@ -185,16 +200,15 @@ ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
                      hjust=vertices$hjust, angle = vertices$new_angle), 
                  size=heb_labels$outdeg_sizes, alpha=1, colour=heb_labels$outdeg_colors) +
   theme_void() +
-  theme(legend.position=c(0.115,0.235), legend.title=element_blank(), 
+  theme(legend.position=c(0.115,0.185), legend.title=element_blank(), 
         legend.text = element_text(size = 9), plot.margin=unit(c(0,0,0,0),"cm")) +
   guides(size = FALSE, alpha = FALSE, color = guide_legend(override.aes = list(size=4))) +
   expand_limits(x = c(-1.3, 1.3), y = c(-1.3, 1.3)) + 
   geom_node_point(aes(filter = leaf, x = x*1.05, y=y*1.05, colour=group, alpha = 0.8, size=vertices$outdeg_cent)) + 
   scale_size_continuous( range = c(3,10) ) +
-  scale_colour_manual(values= c(palette(11)[9], "#FFDB58", palette(11)[3], "#D3D3D3",     
-                                palette(11)[1], palette(11)[11],palette(11)[10]))
+  scale_colour_manual(values= c(  palette(11)[10], "#FFDB58","#D3D3D3", palette(11)[2]))
 
-# betweeeness 
+# btw 
 ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
   geom_conn_bundle(data = get_con(from = from, to = to), 
                    tension = 0.6, aes(colour=..index..), show.legend = FALSE) +
@@ -203,16 +217,15 @@ ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
                      hjust=vertices$hjust, angle = vertices$new_angle), 
                  size=heb_labels$btw_sizes, alpha=1, colour=heb_labels$btw_colors) +
   theme_void() +
-  theme(legend.position=c(0.115,0.235), legend.title=element_blank(), 
+  theme(legend.position=c(0.115,0.185), legend.title=element_blank(), 
         legend.text = element_text(size = 9), plot.margin=unit(c(0,0,0,0),"cm")) +
   guides(size = FALSE, alpha = FALSE, color = guide_legend(override.aes = list(size=4))) +
   expand_limits(x = c(-1.3, 1.3), y = c(-1.3, 1.3)) + 
   geom_node_point(aes(filter = leaf, x = x*1.05, y=y*1.05, colour=group, alpha = 0.8, size=vertices$btw_cent)) + 
   scale_size_continuous( range = c(3,10) ) +
-  scale_colour_manual(values= c(palette(11)[9], "#FFDB58", palette(11)[3], "#D3D3D3",     
-                                palette(11)[1], palette(11)[11],palette(11)[10]))
+  scale_colour_manual(values= c(  palette(11)[10], "#FFDB58","#D3D3D3", palette(11)[2]))
 
-# eigenvector  
+# eigen 
 ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
   geom_conn_bundle(data = get_con(from = from, to = to), 
                    tension = 0.6, aes(colour=..index..), show.legend = FALSE) +
@@ -221,83 +234,36 @@ ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
                      hjust=vertices$hjust, angle = vertices$new_angle), 
                  size=heb_labels$eigen_sizes, alpha=1, colour=heb_labels$eigen_colors) +
   theme_void() +
-  theme(legend.position=c(0.115,0.235), legend.title=element_blank(), 
+  theme(legend.position=c(0.115,0.185), legend.title=element_blank(), 
         legend.text = element_text(size = 9), plot.margin=unit(c(0,0,0,0),"cm")) +
   guides(size = FALSE, alpha = FALSE, color = guide_legend(override.aes = list(size=4))) +
   expand_limits(x = c(-1.3, 1.3), y = c(-1.3, 1.3)) + 
   geom_node_point(aes(filter = leaf, x = x*1.05, y=y*1.05, colour=group, alpha = 0.8, size=vertices$eigen_cent)) + 
   scale_size_continuous( range = c(3,10) ) +
-  scale_colour_manual(values= c(palette(11)[9], "#FFDB58", palette(11)[3], "#D3D3D3",     
-                                palette(11)[1], palette(11)[11],palette(11)[10]))
+  scale_colour_manual(values= c(  palette(11)[10], "#FFDB58","#D3D3D3", palette(11)[2]))
 
-# hub score   
+# times cited 
 ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
   geom_conn_bundle(data = get_con(from = from, to = to), 
                    tension = 0.6, aes(colour=..index..), show.legend = FALSE) +
   scale_edge_colour_gradient(low = "#000000" , high = "#D3D3D3") +
   geom_node_text(aes(x = x*1.1, y=y*1.1, filter = leaf, label=vertices$heb_label, 
                      hjust=vertices$hjust, angle = vertices$new_angle), 
-                 size=heb_labels$hub_sizes, alpha=1, colour=heb_labels$hub_colors) +
+                 size=heb_labels$cited_sizes, alpha=1, colour=heb_labels$cited_colors) +
   theme_void() +
-  theme(legend.position=c(0.115,0.235), legend.title=element_blank(), 
+  theme(legend.position=c(0.115,0.185), legend.title=element_blank(), 
         legend.text = element_text(size = 9), plot.margin=unit(c(0,0,0,0),"cm")) +
   guides(size = FALSE, alpha = FALSE, color = guide_legend(override.aes = list(size=4))) +
   expand_limits(x = c(-1.3, 1.3), y = c(-1.3, 1.3)) + 
-  geom_node_point(aes(filter = leaf, x = x*1.05, y=y*1.05, colour=group, alpha = 0.8, size=vertices$hub_score)) + 
+  geom_node_point(aes(filter = leaf, x = x*1.05, y=y*1.05, colour=group, alpha = 0.8, size=vertices$gstimescited)) + 
   scale_size_continuous( range = c(3,10) ) +
-  scale_colour_manual(values= c(palette(11)[9], "#FFDB58", palette(11)[3], "#D3D3D3",     
-                                palette(11)[1], palette(11)[11],palette(11)[10]))
-
-# hub score   
-ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
-  geom_conn_bundle(data = get_con(from = from, to = to), 
-                   tension = 0.6, aes(colour=..index..), show.legend = FALSE) +
-  scale_edge_colour_gradient(low = "#000000" , high = "#D3D3D3") +
-  geom_node_text(aes(x = x*1.1, y=y*1.1, filter = leaf, label=vertices$heb_label, 
-                     hjust=vertices$hjust, angle = vertices$new_angle), 
-                 size=heb_labels$auth_sizes, alpha=1, colour=heb_labels$auth_colors) +
-  theme_void() +
-  theme(legend.position=c(0.115,0.235), legend.title=element_blank(), 
-        legend.text = element_text(size = 9), plot.margin=unit(c(0,0,0,0),"cm")) +
-  guides(size = FALSE, alpha = FALSE, color = guide_legend(override.aes = list(size=4))) +
-  expand_limits(x = c(-1.3, 1.3), y = c(-1.3, 1.3)) + 
-  geom_node_point(aes(filter = leaf, x = x*1.05, y=y*1.05, colour=group, alpha = 0.8, size=vertices$auth_score)) + 
-  scale_size_continuous( range = c(3,10) ) +
-  scale_colour_manual(values= c(palette(11)[9], "#FFDB58", palette(11)[3], "#D3D3D3",     
-                                palette(11)[1], palette(11)[11],palette(11)[10]))
-
-# outcome graphs ###############
-
-# indegree 
-ggraph(mygraph, layout = 'dendrogram', circular = TRUE) +
-  geom_conn_bundle(data = get_con(from = from, to = to), 
-                   tension = 0.6, aes(colour=..index..), show.legend = FALSE) +
-  scale_edge_colour_gradient(low = "#000000" , high = "#D3D3D3") +
-  geom_node_text(aes(x = x*1.1, y=y*1.1, filter = leaf, label=vertices$heb_label, 
-                     hjust=vertices$hjust, angle = vertices$new_angle), 
-                 size=heb_labels$indeg_sizes, alpha=1, colour=heb_labels$indeg_colors) +
-  theme_void() +
-  theme(legend.position=c(0.115,0.235), legend.title=element_blank(), 
-        legend.text = element_text(size = 9), plot.margin=unit(c(0,0,0,0),"cm")) +
-  guides(size = FALSE, alpha = FALSE, color = guide_legend(override.aes = list(size=4))) +
-  expand_limits(x = c(-1.3, 1.3), y = c(-1.3, 1.3)) + 
-  geom_node_point(aes(filter = leaf, x = x*1.05, y=y*1.05, colour=group, alpha = 0.8, size=vertices$indeg_cent)) + 
-  scale_size_continuous( range = c(3,10) ) +
-  scale_colour_manual(values= c(palette(11)[9], "#FFDB58", palette(11)[3], "#D3D3D3",     
-                                palette(11)[1], palette(11)[11],palette(11)[10]))
+  scale_colour_manual(values= c(  palette(11)[10], "#FFDB58","#D3D3D3", palette(11)[2]))
 
 
-
-
-
-
-
-
-
-
-
-
-
+nodelist %>% 
+  group_by(outcome) %>% 
+  summarise(indeg = mean(indeg_cent),
+            cites = mean(gstimescited))
 
 
 
